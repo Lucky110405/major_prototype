@@ -1,0 +1,31 @@
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/agents/core/__init__.py
+# This file is intentionally left blank.
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/agents/core/agent.py
+class CoreAgent:
+    def __init__(self, name):
+        self.name = name
+
+    def act(self, input_data):
+        # Define the core action of the agent based on input data
+        pass
+
+    def learn(self, feedback):
+        # Implement learning mechanism based on feedback
+        pass
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/agents/core/utils.py
+def preprocess_input(input_data):
+    # Function to preprocess input data for the agent
+    return input_data
+
+def evaluate_output(output_data):
+    # Function to evaluate the output of the agent
+    return output_data
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/agents/core/config.py
+AGENT_CONFIG = {
+    "learning_rate": 0.01,
+    "max_iterations": 1000,
+    "epsilon": 0.1
+}

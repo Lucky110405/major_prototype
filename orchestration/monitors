@@ -1,0 +1,59 @@
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/orchestration/monitors/__init__.py
+# This file is intentionally left blank.
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/orchestration/monitors/monitor.py
+class AgentMonitor:
+    def __init__(self):
+        self.agent_status = {}
+
+    def update_status(self, agent_id, status):
+        self.agent_status[agent_id] = status
+
+    def get_status(self, agent_id):
+        return self.agent_status.get(agent_id, "Status not found")
+
+    def report_all_statuses(self):
+        return self.agent_status
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/orchestration/monitors/logger.py
+import logging
+
+class MonitorLogger:
+    def __init__(self, log_file='monitor.log'):
+        logging.basicConfig(filename=log_file, level=logging.INFO)
+
+    def log(self, message):
+        logging.info(message)
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/orchestration/monitors/metrics.py
+class PerformanceMetrics:
+    def __init__(self):
+        self.metrics = {}
+
+    def record_metric(self, agent_id, metric_name, value):
+        if agent_id not in self.metrics:
+            self.metrics[agent_id] = {}
+        self.metrics[agent_id][metric_name] = value
+
+    def get_metrics(self, agent_id):
+        return self.metrics.get(agent_id, {})
+
+    def report_all_metrics(self):
+        return self.metrics
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/orchestration/monitors/health_check.py
+import time
+
+class HealthCheck:
+    def __init__(self, interval=60):
+        self.interval = interval
+
+    def perform_check(self):
+        # Placeholder for health check logic
+        return True
+
+    def start_health_check(self):
+        while True:
+            if not self.perform_check():
+                print("Health check failed!")
+            time.sleep(self.interval)

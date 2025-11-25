@@ -1,0 +1,32 @@
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/backend/utils/__init__.py
+# This file is intentionally left blank.
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/backend/utils/helpers.py
+def example_helper_function(param):
+    # Example utility function
+    return f"Processed {param}"
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/backend/utils/logger.py
+import logging
+
+def setup_logger(name, log_file, level=logging.INFO):
+    """Function to set up a logger."""
+    handler = logging.FileHandler(log_file)
+    handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+    
+    return logger
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/backend/utils/constants.py
+API_VERSION = "v1"
+DEFAULT_TIMEOUT = 30
+
+# File: /collaborative-multi-modal-agentic-framework/collaborative-multi-modal-agentic-framework/backend/utils/validators.py
+def validate_data(data):
+    # Example validation function
+    if not isinstance(data, dict):
+        raise ValueError("Data must be a dictionary.")
+    return True
