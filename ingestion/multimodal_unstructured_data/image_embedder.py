@@ -9,7 +9,7 @@ class ImageEmbedder:
         image = Image.open(image_path)
 
         embedding = genai.embed_content(
-            model="models/multimodalembedding",
+            model="models/embedding-001",
             content=image
         )
 

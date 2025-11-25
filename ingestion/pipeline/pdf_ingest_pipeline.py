@@ -22,8 +22,8 @@ from typing import Optional
 from ingestion.multimodal_unstructured_data.pdf_parser import parse_pdf            # your parser pipeline
 from models.embeddings.embedder import create_chunks_with_embeddings, embed_texts
 from models.embeddings.metadata_store import MetadataStore
-from models.embeddings.vectorstore_faiss import FaissVectorStore
-from models.embeddings.config import METADATA_DB_PATH, FAISS_INDEX_PATH
+from retrieval.embeddings.vectorstore_faiss import FaissVectorStore
+from retrieval.embeddings.config import METADATA_DB_PATH, FAISS_INDEX_PATH
 
 # Basic logging
 logging.basicConfig(level=logging.INFO)

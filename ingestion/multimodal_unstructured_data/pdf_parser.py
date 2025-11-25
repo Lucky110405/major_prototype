@@ -1,8 +1,16 @@
 import pdfplumber
 from PyPDF2 import PdfReader
 import os
-import camelot
-import fitz  # PyMuPDF
+try:
+    import camelot
+    CAMELOT_AVAILABLE = True
+except ImportError:
+    CAMELOT_AVAILABLE = False
+try:
+    import fitz  # PyMuPDF
+    FITZ_AVAILABLE = True
+except ImportError:
+    FITZ_AVAILABLE = False
 import re
 
 def create_chunks(pages):
@@ -26,6 +34,8 @@ def create_chunks(pages):
 
 
 def extract_images(path):
+    if not FITZ_AVAILABLE:
+        return []
     doc = fitz.open(path)
     images = []
 
@@ -43,6 +53,8 @@ def extract_images(path):
 
 
 def extract_tables(path):
+    if not CAMELOT_AVAILABLE:
+        return []
     try:
         tables = camelot.read_pdf(path, flavor="lattice", pages="all")
         result = []
