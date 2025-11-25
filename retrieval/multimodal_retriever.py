@@ -32,7 +32,7 @@ class MultimodalRetriever:
         Returns:
             List of results with id, score, metadata, type.
         """
-        results = self.qdrant_adapter.search_vectors(self.text_collection, query_vector, top_k=top_k, filters=filters)
+        results = self.qdrant_adapter.search(self.text_collection, query_vector, top_k=top_k, filters=filters)
         for res in results:
             res["type"] = "text"
         return results
@@ -49,7 +49,7 @@ class MultimodalRetriever:
         Returns:
             List of results with id, score, metadata, type.
         """
-        results = self.qdrant_adapter.search_vectors(self.image_collection, query_vector, top_k=top_k, filters=filters)
+        results = self.qdrant_adapter.search(self.image_collection, query_vector, top_k=top_k, filters=filters)
         for res in results:
             res["type"] = "image"
         return results
@@ -154,10 +154,10 @@ class MultimodalRetriever:
         """
         # Retrieve from both collections
         text_results = self.retrieve_text(query_vector, top_k=top_k, filters=text_filters)
-        image_results = self.retrieve_images(query_vector, top_k=top_k, filters=image_filters)
+        # image_results = self.retrieve_images(query_vector, top_k=top_k, filters=image_filters)
         
         # Fuse results
-        fused_results = self.fuse_results(text_results, image_results, text_weight, image_weight, fusion_method)
+        # fused_results = self.fuse_results(text_results, image_results, text_weight, image_weight, fusion_method)
         
         # Return top_k
-        return fused_results[:top_k]
+        return text_results[:top_k]

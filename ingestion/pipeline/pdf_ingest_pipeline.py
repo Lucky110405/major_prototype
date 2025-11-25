@@ -68,7 +68,7 @@ def ingest_pdf(file_path: str, index_path: str = FAISS_INDEX_PATH, meta_db_path:
         meta_store.upsert(it["id"], it["metadata"], it.get("text"), emb_list)
 
     # Upsert vectors into faiss (FaissVectorStore.upsert expects embedding in items)
-    vs.upsert(items, meta_store)
+    vs.upsert(items)
     logger.info("Upsert complete. Index now has %d vectors (approx).", vs.index.ntotal if vs.index else 0)
 
     # Demonstration query
@@ -82,7 +82,7 @@ def ingest_pdf(file_path: str, index_path: str = FAISS_INDEX_PATH, meta_db_path:
 
     logger.info("Top results:")
     for cid, score in results:
-        rec = meta_store.get(cid)
+        rec = meta_store.get_metadata(cid)
         text = rec.get("text") if rec else "<no text>"
         meta = rec.get("metadata") if rec else {}
         logger.info("score=%.4f id=%s meta=%s text(leading)=%s", score, cid, meta, (text[:200].replace("\n"," ") if text else ""))

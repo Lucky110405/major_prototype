@@ -14,13 +14,15 @@ from agents.intent_agent import IntentAgent
 from agents.retriever_agent import RetrieverAgent
 from agents.analyzer_agent import AnalyzerAgent
 from agents.visual_agent import VisualAgent
+from agents.ingestion_agent import IngestionAgent
+from agents.modality_agent import ModalityAgent
 from agents.orchestrator import Orchestrator
 from api.main import app
 import uvicorn
 from dotenv import load_dotenv
 load_dotenv()
 
-    
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,6 +49,8 @@ def setup_components():
     retriever_agent = RetrieverAgent(hybrid_retriever, multimodal_retriever)
     analyzer_agent = AnalyzerAgent()
     visual_agent = VisualAgent()
+    ingestion_agent = IngestionAgent(metadata_store, qdrant_adapter, text_embedder)
+    modality_agent = ModalityAgent()
     orchestrator = Orchestrator(intent_agent, retriever_agent, analyzer_agent, visual_agent)
 
     # Store in app state for dependency injection
@@ -54,6 +58,9 @@ def setup_components():
     app.state.qdrant_adapter = qdrant_adapter
     app.state.text_embedder = text_embedder
     app.state.multimodal_retriever = multimodal_retriever
+    app.state.hybrid_retriever = hybrid_retriever
+    app.state.ingestion_agent = ingestion_agent
+    app.state.modality_agent = modality_agent
     app.state.orchestrator = orchestrator
 
     logger.info("Components set up successfully.")

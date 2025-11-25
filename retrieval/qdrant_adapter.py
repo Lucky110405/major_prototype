@@ -190,18 +190,50 @@ class QdrantAdapter:
 
     def search(self, collection: str, query_vector: List[float], top_k: int = 5, filters: Optional[Dict] = None) -> List[Dict]:
         """Search vectors with optional filters."""
-        search_params = {"vector": query_vector, "limit": top_k}
-        if filters:
-            search_params["filter"] = filters
-        results = self.client.search(collection_name=collection, **search_params)
-        return [
-            {
-                "id": hit.id,
-                "score": hit.score,
-                "metadata": hit.payload
-            }
-            for hit in results
-        ]
+        results = self.client.query_points(
+            collection_name=collection,
+            query=query_vector,
+            limit=top_k,
+            with_payload=True
+        )
+        parsed_results = []
+        if isinstance(results, dict):
+            points = results.get("points", [])
+            for hit in points:
+                if isinstance(hit, dict):
+                    id_ = hit.get("id")
+                    score = hit.get("score")
+                    metadata = hit.get("payload", {})
+                    parsed_results.append({
+                        "id": id_,
+                        "score": score,
+                        "metadata": metadata
+                    })
+        elif isinstance(results, list):
+            for hit in results:
+                if hasattr(hit, 'id'):
+                    id_ = hit.id
+                    score = hit.score
+                    metadata = hit.payload
+                elif isinstance(hit, dict):
+                    id_ = hit.get("id")
+                    score = hit.get("score")
+                    metadata = hit.get("payload", {})
+                elif isinstance(hit, tuple):
+                    if len(hit) >= 2:
+                        id_ = hit[0]
+                        score = hit[1]
+                        metadata = hit[2] if len(hit) > 2 else {}
+                    else:
+                        continue  # Skip invalid
+                else:
+                    continue  # Skip unknown format
+                parsed_results.append({
+                    "id": id_,
+                    "score": score,
+                    "metadata": metadata
+                })
+        return parsed_results
 
     def delete_collection(self, collection: str):
         """Delete a collection."""

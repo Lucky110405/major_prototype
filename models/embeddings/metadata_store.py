@@ -21,6 +21,14 @@ class MetadataStore:
             conn.execute("INSERT OR REPLACE INTO metadata (id, data) VALUES (?, ?)",
                          (doc_id, json.dumps(metadata)))
 
+    def upsert(self, doc_id: str, metadata: Dict[str, Any], text: str = None, embedding: list = None):
+        full_metadata = metadata.copy()
+        if text:
+            full_metadata["text"] = text
+        if embedding:
+            full_metadata["embedding"] = embedding
+        self.store_metadata(doc_id, full_metadata)
+
     def get_metadata(self, doc_id: str) -> Dict[str, Any]:
         with sqlite3.connect(self.db_path) as conn:
             row = conn.execute("SELECT data FROM metadata WHERE id = ?", (doc_id,)).fetchone()

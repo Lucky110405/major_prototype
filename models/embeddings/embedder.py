@@ -5,13 +5,13 @@ import hashlib
 from typing import List, Dict, Any
 
 class TextEmbedder:
-    def __init__(self, model_name: str = "prajjwal1/bert-tiny"):
+    def __init__(self, model_name: str = "bert-base-uncased"):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name)
         self.model.eval()
 
     def embed(self, texts: list) -> list:
-        inputs = self.tokenizer(texts, return_tensors="pt", padding=True, truncation=True)
+        inputs = self.tokenizer(texts, return_tensors="pt", padding=True, truncation=True, max_length=512)
         with torch.no_grad():
             outputs = self.model(**inputs)
         embeddings = outputs.last_hidden_state.mean(dim=1).numpy()

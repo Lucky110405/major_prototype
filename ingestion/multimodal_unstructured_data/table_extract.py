@@ -1,7 +1,8 @@
 import pdfplumber
-import camelot
+import tabula
 import google.generativeai as genai
 from PIL import Image
+import pandas as pd
 
 class TableExtractor:
     def __init__(self, api_key):
@@ -10,9 +11,9 @@ class TableExtractor:
 
     def extract_from_pdf(self, pdf_path):
         try:
-            tables = camelot.read_pdf(pdf_path, pages='all', flavor='lattice')
+            tables = tabula.read_pdf(pdf_path, pages='all', multiple_tables=True)
             if tables:
-                return [t.df.to_dict() for t in tables]
+                return [t.to_dict() for t in tables]
         except:
             pass
 

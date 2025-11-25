@@ -5,6 +5,7 @@ from PIL import Image
 import pytesseract
 from transformers import CLIPProcessor, CLIPModel
 import torch
+import uuid
 
 # Assuming these are in the project
 from models.embeddings.embedder import TextEmbedder  # For text chunks if needed
@@ -143,27 +144,29 @@ class ImageIngestor:
         
         # For image embedding
         if image_embedding:
-            doc_id = f"{source}_image_{os.path.basename(image_path)}"
+            id_ = str(uuid.uuid4())
             metadata = {
                 "source": source,
                 "file_path": image_path,
                 "type": "image",
                 "ocr_text": ocr_text,
-                "chunk_count": len(chunks)
+                "chunk_count": len(chunks),
+                "id": id_
             }
-            self.metadata_store.store_metadata(doc_id, metadata)
-            vectors.append((doc_id, image_embedding, metadata))
+            self.metadata_store.store_metadata(id_, metadata)
+            vectors.append((id_, image_embedding, metadata))
         
         # For text chunks (if embedder available)
         if self.text_embedder and chunks:
             for i, chunk in enumerate(chunks):
-                chunk_id = f"{source}_image_{os.path.basename(image_path)}_chunk_{i}"
+                chunk_id = str(uuid.uuid4())
                 chunk_metadata = {
                     "source": source,
                     "file_path": image_path,
                     "type": "image_chunk",
                     "chunk_index": i,
-                    "text": chunk
+                    "text": chunk,
+                    "id": chunk_id
                 }
                 self.metadata_store.store_metadata(chunk_id, chunk_metadata)
                 chunk_embedding = self.text_embedder.embed([chunk])[0]  # Assuming embed returns list
@@ -171,7 +174,10 @@ class ImageIngestor:
         
         # Upsert to Qdrant
         if vectors:
-            self.qdrant_adapter.upsert_vectors("image_docs", vectors)
+            ids = [v[0] for v in vectors]
+            embeddings = [v[1] for v in vectors]
+            metas = [v[2] for v in vectors]
+            self.qdrant_adapter.upsert_vectors("image_docs", embeddings, metas, ids)
             logger.info(f"Processed and stored {len(vectors)} vectors for {image_path}")
             return True
         else:
