@@ -22,7 +22,7 @@ from typing import Optional
 from ingestion.multimodal_unstructured_data.pdf_parser import parse_pdf            # your parser pipeline
 from models.embeddings.embedder import create_chunks_with_embeddings, embed_texts
 from models.embeddings.metadata_store import MetadataStore
-from retrieval.embeddings.vectorstore_faiss import FaissVectorStore
+from retrieval.qdrant_adapter import QdrantAdapter
 from retrieval.embeddings.config import METADATA_DB_PATH, FAISS_INDEX_PATH
 
 # Basic logging
@@ -34,7 +34,7 @@ def ensure_dirs_for(path_str):
     if not p.parent.exists():
         p.parent.mkdir(parents=True, exist_ok=True)
 
-def ingest_pdf(file_path: str, index_path: str = FAISS_INDEX_PATH, meta_db_path: str = METADATA_DB_PATH, limit_chunks: Optional[int] = None):
+def ingest_pdf(file_path: str, meta_db_path: str = METADATA_DB_PATH, limit_chunks: Optional[int] = None):
     logger.info("Parsing PDF: %s", file_path)
     parsed = parse_pdf(file_path)
     # parsed expected to contain: metadata, raw_text (pages), tables, images, chunks (list of {"page","text","metadata"})
@@ -54,43 +54,30 @@ def ingest_pdf(file_path: str, index_path: str = FAISS_INDEX_PATH, meta_db_path:
     items = create_chunks_with_embeddings([{"text": c["text"], "metadata": {**c.get("metadata", {}), "source_file": os.path.basename(file_path), "page": c.get("page")}} for c in chunks])
 
     # Prepare stores
-    dim = len(items[0]["embedding"])
-    ensure_dirs_for(index_path)
     ensure_dirs_for(meta_db_path)
     meta_store = MetadataStore(meta_db_path)
-    vs = FaissVectorStore(dim, index_path)
+    qdrant_adapter = QdrantAdapter(host="localhost", port=6333)  # Assuming Qdrant is running
 
     # Upsert each item: store embedding in metadata_store (so rebuilds possible)
-    logger.info("Upserting %d items into metadata store and faiss index", len(items))
+    logger.info("Upserting %d items into metadata store and Qdrant", len(items))
+    embeddings = []
+    metadatas = []
+    ids = []
     for it in items:
         # store embedding as list for sqlite (metadata_store handles serialization)
         emb_list = it["embedding"].tolist() if hasattr(it["embedding"], "tolist") else list(map(float, it["embedding"]))
         meta_store.upsert(it["id"], it["metadata"], it.get("text"), emb_list)
+        embeddings.append(emb_list)
+        metadatas.append(it["metadata"])
+        ids.append(it["id"])
 
-    # Upsert vectors into faiss (FaissVectorStore.upsert expects embedding in items)
-    vs.upsert(items)
-    logger.info("Upsert complete. Index now has %d vectors (approx).", vs.index.ntotal if vs.index else 0)
-
-    # Demonstration query
-    sample_query = "Why did sales increase in region A?"  # change as you like
-    logger.info("Running demo query: %s", sample_query)
-    q_vec = np.array(embed_texts([sample_query])[0], dtype=np.float32)
-    results = vs.search(q_vec, top_k=5)
-    if not results:
-        logger.info("No results returned.")
-        return
-
-    logger.info("Top results:")
-    for cid, score in results:
-        rec = meta_store.get_metadata(cid)
-        text = rec.get("text") if rec else "<no text>"
-        meta = rec.get("metadata") if rec else {}
-        logger.info("score=%.4f id=%s meta=%s text(leading)=%s", score, cid, meta, (text[:200].replace("\n"," ") if text else ""))
+    # Upsert vectors into Qdrant
+    qdrant_adapter.upsert_vectors("text_docs", embeddings, metadatas, ids)
+    logger.info("Upsert complete.")
 
 def main():
-    parser = argparse.ArgumentParser(description="PDF ingest -> embeddings -> faiss index")
+    parser = argparse.ArgumentParser(description="PDF ingest -> embeddings -> Qdrant")
     parser.add_argument("pdf", help="Path to PDF file to ingest")
-    parser.add_argument("--index-path", default=FAISS_INDEX_PATH, help="FAISS index path")
     parser.add_argument("--meta-db", default=METADATA_DB_PATH, help="Metadata sqlite path")
     parser.add_argument("--limit-chunks", type=int, default=None, help="Only ingest first N chunks (for testing)")
     args = parser.parse_args()
@@ -99,7 +86,7 @@ def main():
         logger.error("File does not exist: %s", args.pdf)
         return
 
-    ingest_pdf(args.pdf, index_path=args.index_path, meta_db_path=args.meta_db, limit_chunks=args.limit_chunks)
+    ingest_pdf(args.pdf, meta_db_path=args.meta_db, limit_chunks=args.limit_chunks)
 
 if __name__ == "__main__":
     main()

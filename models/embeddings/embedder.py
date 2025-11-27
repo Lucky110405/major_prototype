@@ -2,6 +2,7 @@ from transformers import AutoTokenizer, AutoModel
 import torch
 import numpy as np
 import hashlib
+import uuid
 from typing import List, Dict, Any
 
 class TextEmbedder:
@@ -23,23 +24,19 @@ def embed_texts(texts: List[str]) -> List[List[float]]:
     return embedder.embed(texts)
 
 def create_chunks_with_embeddings(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Create embeddings for text chunks and add IDs"""
-    texts = [chunk["text"] for chunk in chunks]
-    embeddings = embed_texts(texts)
-
+    """Create embeddings for text chunks and add IDs, processing in batches to save memory"""
     items = []
-    for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-        # Create unique ID for the chunk
-        chunk_id = hashlib.sha256()
-        chunk_id.update(chunk["text"].encode("utf-8"))
-        chunk_id.update(str(chunk.get("metadata", {})).encode("utf-8"))
-        unique_id = chunk_id.hexdigest()
-
-        items.append({
-            "id": unique_id,
-            "text": chunk["text"],
-            "metadata": chunk.get("metadata", {}),
-            "embedding": np.array(embedding, dtype=np.float32)
-        })
-
+    batch_size = 5  # Process in small batches to avoid memory issues
+    for i in range(0, len(chunks), batch_size):
+        batch = chunks[i:i+batch_size]
+        texts = [chunk["text"] for chunk in batch]
+        embeddings = embed_texts(texts)
+        for chunk, embedding in zip(batch, embeddings):
+            unique_id = str(uuid.uuid4())
+            items.append({
+                "id": unique_id,
+                "text": chunk["text"],
+                "metadata": chunk.get("metadata", {}),
+                "embedding": np.array(embedding, dtype=np.float32)
+            })
     return items

@@ -24,7 +24,8 @@ def query_endpoint(q: str = Query(...), top_k: Optional[int] = 10,
     query_vector = text_embedder.embed([q])[0] if text_embedder else []
     try:
         results = multimodal_retriever.retrieve(query_vector, top_k=top_k, 
-                                                text_weight=text_weight, image_weight=image_weight)
+                                                text_weight=text_weight, image_weight=image_weight,
+                                                query_text=q)
         return {"results": results}
     except Exception as e:
         return {"status": "error", "message": str(e)}

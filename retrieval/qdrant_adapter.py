@@ -143,98 +143,167 @@
 #         return qmodels.Filter(must=conditions)
 
 
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams
-from typing import List, Dict, Any, Optional
 import logging
-from qdrant_client.http.models import PointStruct 
+from typing import List, Dict, Any, Optional
+
+# qdrant-client has changed APIs between versions; try imports defensively
+try:
+    from qdrant_client import QdrantClient
+except Exception:
+    QdrantClient = None
+
+try:
+    # newer versions expose models at this path
+    from qdrant_client.models import Distance, VectorParams, PointStruct
+except Exception:
+    try:
+        # older layout
+        from qdrant_client.http.models import PointStruct
+        from qdrant_client.models import Distance, VectorParams
+    except Exception:
+        PointStruct = None
+        Distance = None
+        VectorParams = None
 
 logger = logging.getLogger(__name__)
 
+
 class QdrantAdapter:
     def __init__(self, host: str = "localhost", port: int = 6333):
-        self.client = QdrantClient(host=host, port=port)
+        """HTTP-based Qdrant adapter (robust across qdrant-client versions).
+
+        Uses plain REST calls to Qdrant so we don't depend on qdrant-client internals.
+        """
+        import requests
+
+        self.requests = requests
+        self.host = host
+        self.port = port
+        self.base_url = f"http://{host}:{port}"
         self.text_collection = "text_docs"
         self.image_collection = "image_docs"
         self._ensure_collections()
 
     def _ensure_collections(self):
         """Create collections if they don't exist."""
+        # Use REST API to create/recreate collections
+        url_text = f"{self.base_url}/collections/{self.text_collection}"
+        body_text = {"vectors": {"size": 768, "distance": "Cosine"}}
         try:
-            # Text collection
-            self.client.get_collection(self.text_collection)
-        except Exception:
-            self.client.create_collection(
-                collection_name=self.text_collection,
-                vectors_config=VectorParams(size=768, distance=Distance.COSINE)
-            )
-            logger.info(f"Created collection: {self.text_collection}")
+            resp = self.requests.put(url_text, json={"vectors": body_text["vectors"]})
+            if resp.status_code in (200, 201):
+                logger.info(f"Ensured collection: {self.text_collection}")
+            else:
+                logger.debug(f"Create collection response: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logger.error(f"Error creating text collection via REST: {e}")
 
+        url_image = f"{self.base_url}/collections/{self.image_collection}"
+        body_image = {"vectors": {"size": 512, "distance": "Cosine"}}
         try:
-            # Image collection
-            self.client.get_collection(self.image_collection)
-        except Exception:
-            self.client.create_collection(
-                collection_name=self.image_collection,
-                vectors_config=VectorParams(size=512, distance=Distance.COSINE)  # CLIP dimension
-            )
-            logger.info(f"Created collection: {self.image_collection}")
+            resp = self.requests.put(url_image, json={"vectors": body_image["vectors"]})
+            if resp.status_code in (200, 201):
+                logger.info(f"Ensured collection: {self.image_collection}")
+            else:
+                logger.debug(f"Create image collection response: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logger.error(f"Error creating image collection via REST: {e}")
 
-    def upsert_vectors(self, collection: str, vectors: List[List[float]], metadata: List[Dict[str, Any]], ids: List[str]):
-        """Upsert vectors with metadata."""
-        points = [
-            PointStruct(id=id_, vector=vec, payload=meta)
-            for id_, vec, meta in zip(ids, vectors, metadata)
-        ]
-        self.client.upsert(collection_name=collection, points=points)
+    def create_collection_if_not_exists(self, collection: str, vector_size: int = 768, distance: str = "Cosine"):
+        """Create a collection via REST if it does not already exist."""
+        url = f"{self.base_url}/collections/{collection}"
+        body = {"vectors": {"size": vector_size, "distance": distance}}
+        try:
+            resp = self.requests.put(url, json={"vectors": body["vectors"]})
+            if resp.status_code in (200, 201):
+                logger.info(f"Ensured collection: {collection} (size={vector_size})")
+            else:
+                # If already exists, Qdrant may return 400/409 depending on config; just log debug
+                logger.debug(f"Create collection response for {collection}: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logger.error(f"Error creating collection {collection} via REST: {e}")
+
+    def upsert_vectors(self, collection: str, vectors, metadata: Optional[List[Dict[str, Any]]] = None, ids: Optional[List[str]] = None):
+        """Upsert vectors with metadata.
+
+        Supports two shapes for backward compatibility:
+        - upsert_vectors(collection, embeddings_list, metadata_list, ids_list)
+        - upsert_vectors(collection, points_list) where points_list = [(id, embedding, metadata), ...]
+        """
+        # Normalize inputs
+        points = []
+        # If caller passed a single list of tuples (id, embedding, meta)
+        if metadata is None and ids is None and isinstance(vectors, list) and vectors and isinstance(vectors[0], (list, tuple)) and len(vectors[0]) >= 3:
+            for id_, vec, meta in vectors:
+                points.append({"id": id_, "vector": (vec.tolist() if hasattr(vec, 'tolist') else vec), "payload": meta})
+        else:
+            # Expect vectors:list, metadata:list, ids:list
+            if not isinstance(vectors, list) or metadata is None or ids is None:
+                raise ValueError("Invalid arguments for upsert_vectors. Expected (collection, vectors, metadata, ids) or (collection, points_list).")
+            for id_, vec, meta in zip(ids, vectors, metadata):
+                payload = meta or {}
+                embedding = vec.tolist() if hasattr(vec, 'tolist') else vec
+                points.append({"id": id_, "vector": embedding, "payload": payload})
+
+        # Use Qdrant HTTP API to upsert points
+        url = f"{self.base_url}/collections/{collection}/points?wait=true"
+        try:
+            resp = self.requests.put(url, json={"points": points})
+            if resp.status_code not in (200, 201):
+                raise RuntimeError(f"Unexpected Response: {resp.status_code} (Bad Request)\nRaw response content:\n{resp.content}")
+        except Exception as e:
+            logger.error(f"Error upserting points via REST: {e}")
+            raise
 
     def search(self, collection: str, query_vector: List[float], top_k: int = 5, filters: Optional[Dict] = None) -> List[Dict]:
         """Search vectors with optional filters."""
-        results = self.client.query_points(
-            collection_name=collection,
-            query=query_vector,
-            limit=top_k,
-            with_payload=True
-        )
-        parsed_results = []
-        if isinstance(results, dict):
-            points = results.get("points", [])
-            for hit in points:
-                if isinstance(hit, dict):
-                    id_ = hit.get("id")
-                    score = hit.get("score")
-                    metadata = hit.get("payload", {})
-                    parsed_results.append({
-                        "id": id_,
-                        "score": score,
-                        "metadata": metadata
-                    })
-        elif isinstance(results, list):
-            for hit in results:
-                if hasattr(hit, 'id'):
-                    id_ = hit.id
-                    score = hit.score
-                    metadata = hit.payload
-                elif isinstance(hit, dict):
-                    id_ = hit.get("id")
-                    score = hit.get("score")
-                    metadata = hit.get("payload", {})
-                elif isinstance(hit, tuple):
-                    if len(hit) >= 2:
-                        id_ = hit[0]
-                        score = hit[1]
-                        metadata = hit[2] if len(hit) > 2 else {}
-                    else:
-                        continue  # Skip invalid
-                else:
-                    continue  # Skip unknown format
-                parsed_results.append({
-                    "id": id_,
-                    "score": score,
-                    "metadata": metadata
-                })
+        # Use REST search endpoint
+        url = f"{self.base_url}/collections/{collection}/points/search"
+        body = {"vector": query_vector, "limit": top_k, "with_payload": True}
+        if filters:
+            body["filter"] = filters
+        try:
+            resp = self.requests.post(url, json=body)
+            if resp.status_code != 200:
+                raise RuntimeError(f"Unexpected Response: {resp.status_code} (Bad Request)\nRaw response content:\n{resp.content}")
+            data = resp.json()
+        except Exception as e:
+            logger.error(f"Error searching via REST: {e}")
+            raise
+
+        # Parse known response shapes
+        hits = []
+        if isinstance(data, dict):
+            # Qdrant may return {'result': {'points': [...]}} or {'result': [{'id':..., 'score':..., 'payload':...}, ...]}
+            if 'result' in data and isinstance(data['result'], dict):
+                hits = data['result'].get('points') or data['result'].get('hits') or []
+            elif 'result' in data and isinstance(data['result'], list):
+                hits = data['result']
+            elif 'hits' in data:
+                hits = data['hits']
+            elif 'points' in data:
+                hits = data['points']
+        elif isinstance(data, list):
+            hits = data
+
+        parsed_results: List[Dict[str, Any]] = []
+        for hit in hits:
+            if isinstance(hit, dict):
+                id_ = hit.get('id')
+                score = hit.get('score') or hit.get('payload', {}).get('score')
+                metadata = hit.get('payload', {})
+                parsed_results.append({"id": id_, "score": score, "metadata": metadata})
+            elif isinstance(hit, (list, tuple)) and len(hit) >= 2:
+                parsed_results.append({"id": hit[0], "score": hit[1], "metadata": hit[2] if len(hit) > 2 else {}})
+
         return parsed_results
 
     def delete_collection(self, collection: str):
         """Delete a collection."""
-        self.client.delete_collection(collection_name=collection)
+        try:
+            url = f"{self.base_url}/collections/{collection}"
+            resp = self.requests.delete(url)
+            if resp.status_code not in (200, 202):
+                logger.error(f"Failed to delete collection {collection}: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logger.error(f"Error deleting collection via REST: {e}")

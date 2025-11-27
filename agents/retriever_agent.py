@@ -34,7 +34,7 @@ class RetrieverAgent:
         """
         try:
             # Use multimodal retriever for combined text and image retrieval
-            results = self.multimodal_retriever.retrieve(query_vector, top_k=top_k)
+            results = self.multimodal_retriever.retrieve(query_vector, top_k=top_k, query_text=query)
             
             # Optionally, use hybrid for text if needed
             if intent in ["diagnostic", "predictive"]:
@@ -44,7 +44,7 @@ class RetrieverAgent:
                 results.extend(text_results)
                 results = sorted(results, key=lambda x: x.get("fused_score", x.get("score", 0)), reverse=True)[:top_k]
             
-            selected_chunks = [res for res in results if res.get("score", 0) > 0.5]  # Threshold for relevance
+            selected_chunks = results  # [res for res in results if res.get("score", 0) > -1.0]  # Include all for debugging
             
             logger.info(f"Retrieved {len(selected_chunks)} relevant chunks")
             

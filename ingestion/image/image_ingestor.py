@@ -172,17 +172,18 @@ class ImageIngestor:
                 chunk_embedding = self.text_embedder.embed([chunk])[0]  # Assuming embed returns list
                 vectors.append((chunk_id, chunk_embedding, chunk_metadata))
         
-        # Upsert to Qdrant
+        # Upsert to Qdrant and return stored IDs
         if vectors:
             ids = [v[0] for v in vectors]
             embeddings = [v[1] for v in vectors]
             metas = [v[2] for v in vectors]
+            # Use adapter's flexible upsert (supports points_list or separate lists)
             self.qdrant_adapter.upsert_vectors("image_docs", embeddings, metas, ids)
             logger.info(f"Processed and stored {len(vectors)} vectors for {image_path}")
-            return True
+            return ids
         else:
             logger.warning(f"No vectors generated for {image_path}")
-            return False
+            return []
 
     def process_batch(self, image_paths: List[str], source: str = "batch") -> int:
         """

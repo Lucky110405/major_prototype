@@ -9,7 +9,7 @@ from ingestion.etl_structured_data.excel_loader import ExcelLoader
 from ingestion.multimodal_unstructured_data.audio_transcriber import AudioTranscriber
 from ingestion.multimodal_unstructured_data.chart_ocr import ChartOCR
 from ingestion.multimodal_unstructured_data.table_extract import TableExtractor
-from models.embeddings.embedder import TextEmbedder
+from models.embeddings.embedder import TextEmbedder, create_chunks_with_embeddings
 from models.embeddings.metadata_store import MetadataStore
 from retrieval.qdrant_adapter import QdrantAdapter
 
@@ -90,17 +90,48 @@ class IngestionAgent:
                 return {"status": "success" if success else "failed", "modality": modality}
             elif modality == 'csv':
                 df = CSVLoader.load(file_path)
-                # Create a summary text for embedding instead of the full data
-                columns = list(df.columns)
-                num_rows = len(df)
-                unique_assets = df['asset'].unique().tolist() if 'asset' in df.columns else []
-                summary_text = f"Market data CSV file with {num_rows} rows and columns: {', '.join(columns)}. Contains data for assets: {', '.join(unique_assets) if unique_assets else 'various data'}. Includes price trends, volatility, and market analysis."
-                embedding = self.text_embedder.embed([summary_text])[0]
-                id_ = str(uuid.uuid4())
-                metadata = {"source": source, "type": "csv", "filename": os.path.basename(file_path), "id": id_, "summary": summary_text}
-                self.qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
-                self.metadata_store.store_metadata(id_, metadata)
-                return {"status": "success", "modality": modality}
+                chunks = []
+                max_chunk_chars = 4000
+                # If an 'asset' column exists, group by asset and create a chunk per asset
+                if 'asset' in df.columns:
+                    grouped = df.groupby('asset')
+                    for asset, group in grouped:
+                        text = group.to_string(index=False)
+                        text = text[:max_chunk_chars]
+                        meta = {"source": source, "type": "csv", "filename": os.path.basename(file_path), "asset": str(asset)}
+                        chunks.append({"text": text, "metadata": meta})
+                else:
+                    # Chunk by fixed number of rows to keep chunks reasonably sized
+                    chunk_rows = 50
+                    num_rows = len(df)
+                    for start in range(0, num_rows, chunk_rows):
+                        sub = df.iloc[start:start+chunk_rows]
+                        text = sub.to_string(index=False)
+                        text = text[:max_chunk_chars]
+                        meta = {"source": source, "type": "csv", "filename": os.path.basename(file_path), "row_range": f"{start}-{start+len(sub)-1}"}
+                        chunks.append({"text": text, "metadata": meta})
+
+                # Create embeddings for chunks (uses batching inside helper)
+                items = create_chunks_with_embeddings(chunks)
+
+                # Prepare upsert lists
+                vectors = [item['embedding'].tolist() if hasattr(item['embedding'], 'tolist') else item['embedding'] for item in items]
+                metas = []
+                ids = []
+                for item in items:
+                    meta = item.get('metadata', {})
+                    # include a short text excerpt to help downstream analyzer and retrieval displays
+                    meta['text_excerpt'] = item.get('text', '')[:1000]
+                    meta['filename'] = os.path.basename(file_path)
+                    metas.append(meta)
+                    ids.append(item['id'])
+
+                if vectors:
+                    self.qdrant_adapter.upsert_vectors("text_docs", vectors, metas, ids)
+                    for i, id_ in enumerate(ids):
+                        self.metadata_store.store_metadata(id_, metas[i])
+
+                return {"status": "success", "modality": modality, "chunks_stored": len(ids)}
             elif modality == 'excel':
                 df = ExcelLoader.load(file_path)
                 text_content = df.to_string()

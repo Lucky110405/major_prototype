@@ -1,13 +1,14 @@
 import logging
 from typing import List, Dict, Any, Optional
 from retrieval.qdrant_adapter import QdrantAdapter
+from retrieval.reranker import CrossEncoderReranker
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class MultimodalRetriever:
-    def __init__(self, qdrant_adapter: QdrantAdapter, text_collection: str = "text_docs", image_collection: str = "image_docs"):
+    def __init__(self, qdrant_adapter: QdrantAdapter, text_collection: str = "text_docs", image_collection: str = "image_docs", reranker: Optional[CrossEncoderReranker] = None):
         """
         Initialize the Multimodal Retriever.
         
@@ -19,6 +20,7 @@ class MultimodalRetriever:
         self.qdrant_adapter = qdrant_adapter
         self.text_collection = text_collection
         self.image_collection = image_collection
+        self.reranker = reranker
 
     def retrieve_text(self, query_vector: List[float], top_k: int = 10, filters: Optional[Dict] = None) -> List[Dict]:
         """
@@ -136,7 +138,7 @@ class MultimodalRetriever:
     def retrieve(self, query_vector: List[float], top_k: int = 10, 
                  text_filters: Optional[Dict] = None, image_filters: Optional[Dict] = None,
                  text_weight: float = 0.5, image_weight: float = 0.5, 
-                 fusion_method: str = "weighted") -> List[Dict]:
+                 fusion_method: str = "weighted", query_text: Optional[str] = None) -> List[Dict]:
         """
         Perform multimodal retrieval.
         
@@ -154,6 +156,21 @@ class MultimodalRetriever:
         """
         # Retrieve from both collections
         text_results = self.retrieve_text(query_vector, top_k=top_k, filters=text_filters)
+        # If a reranker is provided and we have the original query text, apply reranking
+        if self.reranker and query_text and text_results:
+            # Prepare candidate dicts expected by reranker
+            candidates = []
+            for r in text_results:
+                candidates.append({
+                    "id": r.get("id"),
+                    "score": r.get("score"),
+                    "metadata": r.get("metadata", {})
+                })
+            reranked = self.reranker.rerank(query_text, candidates, top_k=top_k)
+            # map reranked entries back to retrieval format
+            text_results = []
+            for rr in reranked:
+                text_results.append({"id": rr.get("id"), "score": rr.get("rerank_score"), "metadata": rr.get("metadata", {}), "type": "text"})
         # image_results = self.retrieve_images(query_vector, top_k=top_k, filters=image_filters)
         
         # Fuse results

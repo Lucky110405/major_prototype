@@ -2,6 +2,7 @@ from fastapi import APIRouter, UploadFile, File, Form, Depends, Request
 from typing import Optional
 import os
 import tempfile
+import uuid
 from ingestion.pipeline.pdf_ingest_pipeline import ingest_pdf
 from ingestion.image.image_ingestor import ImageIngestor
 from ingestion.etl_structured_data.csv_loader import CSVLoader
@@ -59,8 +60,8 @@ def ingest_image_endpoint(file: UploadFile = File(...), source: Optional[str] = 
     
     try:
         ingestor = ImageIngestor(metadata_store, qdrant_adapter, text_embedder)
-        success = ingestor.process_image(file_path, source)
-        return {"status": "success" if success else "failed"}
+        ids = ingestor.process_image(file_path, source)
+        return {"status": "success" if ids else "failed", "ids": ids}
     except Exception as e:
         return {"status": "error", "message": str(e)}
     finally:
@@ -84,10 +85,11 @@ def ingest_csv_endpoint(file: UploadFile = File(...), source: Optional[str] = Fo
         text_content = df.to_string()
         # Embed and store
         embedding = text_embedder.embed([text_content])[0]
-        metadata = {"source": source, "type": "csv", "filename": file.filename}
-        qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [file.filename])
-        metadata_store.store_metadata(file.filename, metadata)
-        return {"status": "success"}
+        id_ = str(uuid.uuid4())
+        metadata = {"source": source, "type": "csv", "filename": file.filename, "id": id_}
+        qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
+        metadata_store.store_metadata(id_, metadata)
+        return {"status": "success", "id": id_}
     except Exception as e:
         return {"status": "error", "message": str(e)}
     finally:
@@ -111,10 +113,11 @@ def ingest_excel_endpoint(file: UploadFile = File(...), sheet_name: Optional[str
         text_content = df.to_string()
         # Embed and store
         embedding = text_embedder.embed([text_content])[0]
-        metadata = {"source": source, "type": "excel", "filename": file.filename, "sheet": sheet_name}
-        qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [file.filename])
-        metadata_store.store_metadata(file.filename, metadata)
-        return {"status": "success"}
+        id_ = str(uuid.uuid4())
+        metadata = {"source": source, "type": "excel", "filename": file.filename, "sheet": sheet_name, "id": id_}
+        qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
+        metadata_store.store_metadata(id_, metadata)
+        return {"status": "success", "id": id_}
     except Exception as e:
         return {"status": "error", "message": str(e)}
     finally:
@@ -137,10 +140,11 @@ def ingest_audio_endpoint(file: UploadFile = File(...), source: Optional[str] = 
         text_content = transcriber.transcribe(file_path)
         # Embed and store
         embedding = text_embedder.embed([text_content])[0]
-        metadata = {"source": source, "type": "audio", "filename": file.filename}
-        qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [file.filename])
-        metadata_store.store_metadata(file.filename, metadata)
-        return {"status": "success", "transcription": text_content}
+        id_ = str(uuid.uuid4())
+        metadata = {"source": source, "type": "audio", "filename": file.filename, "id": id_, "transcription": text_content}
+        qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
+        metadata_store.store_metadata(id_, metadata)
+        return {"status": "success", "id": id_, "transcription": text_content}
     except Exception as e:
         return {"status": "error", "message": str(e)}
     finally:
@@ -165,10 +169,11 @@ def ingest_chart_endpoint(file: UploadFile = File(...), source: Optional[str] = 
         insights = ocr.extract_insights(file_path)
         # Embed and store
         embedding = text_embedder.embed([insights])[0]
-        metadata = {"source": source, "type": "chart", "filename": file.filename}
-        qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [file.filename])
-        metadata_store.store_metadata(file.filename, metadata)
-        return {"status": "success", "insights": insights}
+        id_ = str(uuid.uuid4())
+        metadata = {"source": source, "type": "chart", "filename": file.filename, "id": id_, "insights": insights}
+        qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
+        metadata_store.store_metadata(id_, metadata)
+        return {"status": "success", "id": id_, "insights": insights}
     except Exception as e:
         return {"status": "error", "message": str(e)}
     finally:
@@ -199,10 +204,11 @@ def ingest_table_endpoint(file: UploadFile = File(...), source: Optional[str] = 
         text_content = str(tables)
         # Embed and store
         embedding = text_embedder.embed([text_content])[0]
-        metadata = {"source": source, "type": "table", "filename": file.filename}
-        qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [file.filename])
-        metadata_store.store_metadata(file.filename, metadata)
-        return {"status": "success", "tables": tables}
+        id_ = str(uuid.uuid4())
+        metadata = {"source": source, "type": "table", "filename": file.filename, "id": id_, "tables_summary": tables}
+        qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
+        metadata_store.store_metadata(id_, metadata)
+        return {"status": "success", "id": id_, "tables": tables}
     except Exception as e:
         return {"status": "error", "message": str(e)}
     finally:
@@ -221,5 +227,17 @@ def ingest_auto_endpoint(file: UploadFile = File(...), source: Optional[str] = F
     try:
         result = ingestion_agent.ingest_file(file_path, source)
         return result
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@router.get("/meta/{doc_id}")
+def get_metadata_endpoint(doc_id: str, metadata_store=Depends(get_metadata_store)):
+    """Fetch stored metadata by document ID."""
+    try:
+        data = metadata_store.get_metadata(doc_id)
+        if not data:
+            return {"status": "not_found", "id": doc_id}
+        return {"status": "success", "id": doc_id, "metadata": data}
     except Exception as e:
         return {"status": "error", "message": str(e)}
