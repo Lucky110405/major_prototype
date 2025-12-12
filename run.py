@@ -6,6 +6,7 @@ Sets up components and starts the FastAPI server.
 
 import logging
 import os
+from dotenv import load_dotenv
 from models.embeddings.embedder import TextEmbedder
 from models.embeddings.metadata_store import MetadataStore
 from retrieval.qdrant_adapter import QdrantAdapter
@@ -34,7 +35,7 @@ def setup_components():
     logger.info("Setting up components...")
 
     # Metadata Store
-    metadata_store = MetadataStore(db_path="metadata.db")
+    metadata_store = MetadataStore()
 
     # Qdrant Adapter
     qdrant_adapter = QdrantAdapter(host="localhost", port=6333)
@@ -66,6 +67,7 @@ def setup_components():
     ingestion_agent = IngestionAgent(metadata_store, qdrant_adapter, text_embedder)
     modality_agent = ModalityAgent()
     orchestrator = Orchestrator(intent_agent, retriever_agent, analyzer_agent, visual_agent)
+    from agents.chat_agent import ChatAgent
 
     # Store in app state for dependency injection
     app.state.metadata_store = metadata_store
@@ -76,6 +78,7 @@ def setup_components():
     app.state.ingestion_agent = ingestion_agent
     app.state.modality_agent = modality_agent
     app.state.orchestrator = orchestrator
+    app.state.chat_agent = ChatAgent(orchestrator, text_embedder)
 
     logger.info("Components set up successfully.")
 

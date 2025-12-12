@@ -62,7 +62,7 @@ class ExcelIngestor:
             chunks.append(text)
         return chunks
 
-    def process_excel(self, excel_path: str, sheet_name: str = 0, source: str = "unknown") -> bool:
+    def process_excel(self, excel_path: str, sheet_name: str = 0, source: str = "unknown", stored_path: str = None) -> bool:
         """
         Process an Excel file: load sheet, extract insights, chunk, embed, store.
         
@@ -95,6 +95,8 @@ class ExcelIngestor:
                     "insights": insights,
                     "text": chunk
                 }
+                if stored_path:
+                    metadata['stored_path'] = stored_path
                 self.metadata_store.store_metadata(doc_id, metadata)
                 embedding = self.text_embedder.embed([chunk])[0]
                 vectors.append((doc_id, embedding, metadata))

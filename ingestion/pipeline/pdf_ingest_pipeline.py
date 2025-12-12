@@ -34,7 +34,7 @@ def ensure_dirs_for(path_str):
     if not p.parent.exists():
         p.parent.mkdir(parents=True, exist_ok=True)
 
-def ingest_pdf(file_path: str, meta_db_path: str = METADATA_DB_PATH, limit_chunks: Optional[int] = None):
+def ingest_pdf(file_path: str, index_path: Optional[str] = None, limit_chunks: Optional[int] = None, stored_path: Optional[str] = None):
     logger.info("Parsing PDF: %s", file_path)
     parsed = parse_pdf(file_path)
     # parsed expected to contain: metadata, raw_text (pages), tables, images, chunks (list of {"page","text","metadata"})
@@ -51,11 +51,10 @@ def ingest_pdf(file_path: str, meta_db_path: str = METADATA_DB_PATH, limit_chunk
 
     # create dense vectors
     logger.info("Creating embeddings for chunks (this may take a while)...")
-    items = create_chunks_with_embeddings([{"text": c["text"], "metadata": {**c.get("metadata", {}), "source_file": os.path.basename(file_path), "page": c.get("page")}} for c in chunks])
+    items = create_chunks_with_embeddings([{"text": c["text"], "metadata": {**c.get("metadata", {}), "source_file": os.path.basename(file_path), "page": c.get("page"), **({'stored_path': stored_path} if stored_path else {})}} for c in chunks])
 
     # Prepare stores
-    ensure_dirs_for(meta_db_path)
-    meta_store = MetadataStore(meta_db_path)
+    meta_store = MetadataStore()
     qdrant_adapter = QdrantAdapter(host="localhost", port=6333)  # Assuming Qdrant is running
 
     # Upsert each item: store embedding in metadata_store (so rebuilds possible)
@@ -86,7 +85,7 @@ def main():
         logger.error("File does not exist: %s", args.pdf)
         return
 
-    ingest_pdf(args.pdf, meta_db_path=args.meta_db, limit_chunks=args.limit_chunks)
+    ingest_pdf(args.pdf, limit_chunks=args.limit_chunks)
 
 if __name__ == "__main__":
     main()

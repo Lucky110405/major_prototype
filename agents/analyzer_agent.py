@@ -1,7 +1,7 @@
 import logging
 import os
 import subprocess
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from transformers import pipeline
 
 # Set up logging
@@ -54,7 +54,7 @@ class AnalyzerAgent:
             logging.error(f"Ollama generation failed: {e}; stdout: {out}; stderr: {err}")
             return ""
 
-    def run(self, chunks: List[Dict], intent: str) -> Dict[str, Any]:
+    def run(self, chunks: List[Dict], intent: str, conversation_messages: List[Dict] | None = None, conversation_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Analyze retrieved chunks and synthesize insights.
         
@@ -111,7 +111,19 @@ class AnalyzerAgent:
                 "Do NOT introduce information that is not present in the excerpts.\n"
                 "Produce a structured response with three clearly labeled sections: Summary (3-6 sentences), Key Insights (bullet list), and Recommended Next Steps (bullet list).\n\n"
             )
-            model_input = instruction + "\n" + combined_text
+            # Add optional conversation history before chunk excerpts for context
+            conv_history_str = ""
+            if conversation_messages:
+                # Use last N messages
+                last_msgs = conversation_messages[-8:]
+                parts = []
+                for m in last_msgs:
+                    role = m.get('role', 'user')
+                    content = m.get('content', '')
+                    parts.append(f"{role.upper()}: {content}")
+                conv_history_str = "\nCONVERSATION HISTORY:\n" + "\n".join(parts) + "\n\n"
+
+            model_input = instruction + conv_history_str + combined_text
             
             # Summarize/analyze using the composed instruction and chunk excerpts. Adjust lengths by intent.
             if intent == "descriptive":
@@ -141,16 +153,22 @@ class AnalyzerAgent:
 
             logger.info(f"Generated analysis for {intent} intent")
 
-            return {
+            result = {
                 "analysis": summary,
                 "insights": insights,
                 "draft_report": draft_report,
                 "used_chunks": used_chunks
             }
+            if conversation_id:
+                result['conversation_id'] = conversation_id
+            return result
         except Exception as e:
             logger.error(f"Error in analysis: {e}")
-            return {
+            result = {
                 "analysis": "Error in analysis.",
                 "insights": [],
                 "draft_report": "Analysis failed."
             }
+            if conversation_id:
+                result['conversation_id'] = conversation_id
+            return result

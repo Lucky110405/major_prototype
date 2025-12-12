@@ -1,6 +1,9 @@
 from fastapi import APIRouter, UploadFile, File, Form, Depends, Request
 from typing import Optional
 import os
+import shutil
+import uuid
+from datetime import datetime
 import tempfile
 import uuid
 from ingestion.pipeline.pdf_ingest_pipeline import ingest_pdf
@@ -38,8 +41,16 @@ def ingest_pdf_endpoint(file: UploadFile = File(...), index_path: Optional[str] 
     with open(file_path, "wb") as f:
         f.write(file.file.read())
     
+    # Save copy to data/raw for archival
+    data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+    raw_dir = os.path.join(data_root, "raw")
+    os.makedirs(raw_dir, exist_ok=True)
+    unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
+    stored_path = os.path.join(raw_dir, unique_name)
+    shutil.copy2(file_path, stored_path)
+
     try:
-        result = ingest_pdf(file_path, index_path, meta_db_path, limit_chunks)
+        result = ingest_pdf(file_path, index_path, limit_chunks, stored_path=stored_path)
         return {"status": "success", "result": result}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -58,9 +69,17 @@ def ingest_image_endpoint(file: UploadFile = File(...), source: Optional[str] = 
     with open(file_path, "wb") as f:
         f.write(file.file.read())
     
+    # Save copy to data/raw
+    data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+    raw_dir = os.path.join(data_root, "raw")
+    os.makedirs(raw_dir, exist_ok=True)
+    unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
+    stored_path = os.path.join(raw_dir, unique_name)
+    shutil.copy2(file_path, stored_path)
+
     try:
         ingestor = ImageIngestor(metadata_store, qdrant_adapter, text_embedder)
-        ids = ingestor.process_image(file_path, source)
+        ids = ingestor.process_image(file_path, source, stored_path=stored_path)
         return {"status": "success" if ids else "failed", "ids": ids}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -79,6 +98,14 @@ def ingest_csv_endpoint(file: UploadFile = File(...), source: Optional[str] = Fo
     with open(file_path, "wb") as f:
         f.write(file.file.read())
     
+    # Save copy to data/raw
+    data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+    raw_dir = os.path.join(data_root, "raw")
+    os.makedirs(raw_dir, exist_ok=True)
+    unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
+    stored_path = os.path.join(raw_dir, unique_name)
+    shutil.copy2(file_path, stored_path)
+
     try:
         df = CSVLoader.load(file_path)
         # Convert to text representation
@@ -86,7 +113,7 @@ def ingest_csv_endpoint(file: UploadFile = File(...), source: Optional[str] = Fo
         # Embed and store
         embedding = text_embedder.embed([text_content])[0]
         id_ = str(uuid.uuid4())
-        metadata = {"source": source, "type": "csv", "filename": file.filename, "id": id_}
+        metadata = {"source": source, "type": "csv", "filename": file.filename, "id": id_, "stored_path": stored_path}
         qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
         metadata_store.store_metadata(id_, metadata)
         return {"status": "success", "id": id_}
@@ -107,6 +134,14 @@ def ingest_excel_endpoint(file: UploadFile = File(...), sheet_name: Optional[str
     with open(file_path, "wb") as f:
         f.write(file.file.read())
     
+    # Save copy to data/raw
+    data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+    raw_dir = os.path.join(data_root, "raw")
+    os.makedirs(raw_dir, exist_ok=True)
+    unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
+    stored_path = os.path.join(raw_dir, unique_name)
+    shutil.copy2(file_path, stored_path)
+
     try:
         df = ExcelLoader.load(file_path, sheet_name)
         # Convert to text representation
@@ -114,7 +149,7 @@ def ingest_excel_endpoint(file: UploadFile = File(...), sheet_name: Optional[str
         # Embed and store
         embedding = text_embedder.embed([text_content])[0]
         id_ = str(uuid.uuid4())
-        metadata = {"source": source, "type": "excel", "filename": file.filename, "sheet": sheet_name, "id": id_}
+        metadata = {"source": source, "type": "excel", "filename": file.filename, "sheet": sheet_name, "id": id_, "stored_path": stored_path}
         qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
         metadata_store.store_metadata(id_, metadata)
         return {"status": "success", "id": id_}
@@ -135,13 +170,21 @@ def ingest_audio_endpoint(file: UploadFile = File(...), source: Optional[str] = 
     with open(file_path, "wb") as f:
         f.write(file.file.read())
     
+    # Save copy to data/raw
+    data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+    raw_dir = os.path.join(data_root, "raw")
+    os.makedirs(raw_dir, exist_ok=True)
+    unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
+    stored_path = os.path.join(raw_dir, unique_name)
+    shutil.copy2(file_path, stored_path)
+
     try:
         transcriber = AudioTranscriber()
         text_content = transcriber.transcribe(file_path)
         # Embed and store
         embedding = text_embedder.embed([text_content])[0]
         id_ = str(uuid.uuid4())
-        metadata = {"source": source, "type": "audio", "filename": file.filename, "id": id_, "transcription": text_content}
+        metadata = {"source": source, "type": "audio", "filename": file.filename, "id": id_, "transcription": text_content, "stored_path": stored_path}
         qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
         metadata_store.store_metadata(id_, metadata)
         return {"status": "success", "id": id_, "transcription": text_content}
@@ -162,6 +205,14 @@ def ingest_chart_endpoint(file: UploadFile = File(...), source: Optional[str] = 
     with open(file_path, "wb") as f:
         f.write(file.file.read())
     
+    # Save copy to data/raw
+    data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+    raw_dir = os.path.join(data_root, "raw")
+    os.makedirs(raw_dir, exist_ok=True)
+    unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
+    stored_path = os.path.join(raw_dir, unique_name)
+    shutil.copy2(file_path, stored_path)
+
     try:
         # Assuming api_key is set in environment or app state
         api_key = os.getenv("GOOGLE_API_KEY")  # or from app.state
@@ -170,7 +221,7 @@ def ingest_chart_endpoint(file: UploadFile = File(...), source: Optional[str] = 
         # Embed and store
         embedding = text_embedder.embed([insights])[0]
         id_ = str(uuid.uuid4())
-        metadata = {"source": source, "type": "chart", "filename": file.filename, "id": id_, "insights": insights}
+        metadata = {"source": source, "type": "chart", "filename": file.filename, "id": id_, "insights": insights, "stored_path": stored_path}
         qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
         metadata_store.store_metadata(id_, metadata)
         return {"status": "success", "id": id_, "insights": insights}
@@ -191,6 +242,14 @@ def ingest_table_endpoint(file: UploadFile = File(...), source: Optional[str] = 
     with open(file_path, "wb") as f:
         f.write(file.file.read())
     
+    # Save copy to data/raw
+    data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+    raw_dir = os.path.join(data_root, "raw")
+    os.makedirs(raw_dir, exist_ok=True)
+    unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
+    stored_path = os.path.join(raw_dir, unique_name)
+    shutil.copy2(file_path, stored_path)
+
     try:
         api_key = os.getenv("GOOGLE_API_KEY")
         extractor = TableExtractor(api_key)
@@ -205,7 +264,7 @@ def ingest_table_endpoint(file: UploadFile = File(...), source: Optional[str] = 
         # Embed and store
         embedding = text_embedder.embed([text_content])[0]
         id_ = str(uuid.uuid4())
-        metadata = {"source": source, "type": "table", "filename": file.filename, "id": id_, "tables_summary": tables}
+        metadata = {"source": source, "type": "table", "filename": file.filename, "id": id_, "tables_summary": tables, "stored_path": stored_path}
         qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
         metadata_store.store_metadata(id_, metadata)
         return {"status": "success", "id": id_, "tables": tables}
@@ -224,8 +283,16 @@ def ingest_auto_endpoint(file: UploadFile = File(...), source: Optional[str] = F
     with open(file_path, "wb") as f:
         f.write(file.file.read())
     
+    # Save a copy, pass its path to the ingestion agent; ingestion agent will process and delete temp file
+    data_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+    raw_dir = os.path.join(data_root, "raw")
+    os.makedirs(raw_dir, exist_ok=True)
+    unique_name = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex}_{os.path.basename(file.filename)}"
+    stored_path = os.path.join(raw_dir, unique_name)
+    shutil.copy2(file_path, stored_path)
+
     try:
-        result = ingestion_agent.ingest_file(file_path, source)
+        result = ingestion_agent.ingest_file(file_path, source, stored_path=stored_path)
         return result
     except Exception as e:
         return {"status": "error", "message": str(e)}

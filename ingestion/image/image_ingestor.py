@@ -112,7 +112,7 @@ class ImageIngestor:
             logger.error(f"Error embedding image {image_path}: {e}")
             return []
 
-    def process_image(self, image_path: str, source: str = "unknown") -> bool:
+    def process_image(self, image_path: str, source: str = "unknown", stored_path: str = None) -> bool:
         """
         Process a single image: OCR, chunk, embed, store metadata, upsert to Qdrant.
         
@@ -148,6 +148,7 @@ class ImageIngestor:
             metadata = {
                 "source": source,
                 "file_path": image_path,
+                "stored_path": stored_path,
                 "type": "image",
                 "ocr_text": ocr_text,
                 "chunk_count": len(chunks),
@@ -163,6 +164,7 @@ class ImageIngestor:
                 chunk_metadata = {
                     "source": source,
                     "file_path": image_path,
+                    "stored_path": stored_path,
                     "type": "image_chunk",
                     "chunk_index": i,
                     "text": chunk,

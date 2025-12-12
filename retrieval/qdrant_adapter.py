@@ -307,3 +307,28 @@ class QdrantAdapter:
                 logger.error(f"Failed to delete collection {collection}: {resp.status_code} {resp.text}")
         except Exception as e:
             logger.error(f"Error deleting collection via REST: {e}")
+
+    def delete_points(self, collection: str, ids: list):
+        """Delete points by ids from a collection using Qdrant REST API.
+
+        Args:
+            collection: collection name
+            ids: list of ids (strings or ints)
+        """
+        try:
+            url = f"{self.base_url}/collections/{collection}/points/delete?wait=true"
+            # Qdrant supports multiple shapes for delete payloads across versions; normalize to list of dicts
+            points_payload = []
+            for _id in ids:
+                try:
+                    # If numeric id, try to convert
+                    points_payload.append({"id": int(_id)})
+                except Exception:
+                    points_payload.append({"id": str(_id)})
+            resp = self.requests.post(url, json={"points": points_payload})
+            if resp.status_code not in (200, 202):
+                logger.error(f"Failed to delete points in collection {collection}: {resp.status_code} {resp.text}")
+                raise RuntimeError(f"Failed to delete points: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logger.error(f"Error deleting points via REST: {e}")
+            raise

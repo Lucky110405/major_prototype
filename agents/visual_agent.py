@@ -1,5 +1,7 @@
 import logging
 from typing import Dict, Any, List
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 from io import BytesIO
@@ -34,7 +36,13 @@ class VisualAgent:
             # Extract numerical data from chunks (simple example)
             data_points = []
             for chunk in chunks:
-                text = chunk.get("text", "")
+                # Prefer metadata text excerpts when present
+                meta = chunk.get('metadata', {}) if isinstance(chunk, dict) else {}
+                text = ''
+                if isinstance(meta, dict):
+                    text = meta.get('text_excerpt') or meta.get('text') or ''
+                if not text:
+                    text = chunk.get('text') or ''
                 # Simple extraction: assume numbers in text
                 import re
                 numbers = re.findall(r'\d+', text)
@@ -54,11 +62,13 @@ class VisualAgent:
                 plt.savefig(buf, format='png')
                 buf.seek(0)
                 img_base64 = base64.b64encode(buf.read()).decode('utf-8')
-                visualizations.append({"type": "chart", "data": img_base64})
+                # Add data URI prefix for convenience in frontend consumers
+                data_uri = f"data:image/png;base64,{img_base64}"
+                visualizations.append({"type": "chart", "data": data_uri})
                 plt.close()
             
             # Create a summary table
-            df = pd.DataFrame({"Insight": insights})
+            df = pd.DataFrame({"Insight": insights}) if insights else pd.DataFrame()
             table_html = df.to_html(index=False)
             tables.append(table_html)
             

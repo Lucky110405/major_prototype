@@ -66,7 +66,7 @@ class IngestionAgent:
                 pass
             return 'unknown'
 
-    def ingest_file(self, file_path: str, source: str = "auto") -> Dict[str, Any]:
+    def ingest_file(self, file_path: str, source: str = "auto", stored_path: str = None) -> Dict[str, Any]:
         """
         Automatically ingest a file based on its detected modality.
         
@@ -82,7 +82,7 @@ class IngestionAgent:
         
         try:
             if modality == 'pdf':
-                result = ingest_pdf(file_path, meta_db_path="metadata.db")
+                result = ingest_pdf(file_path, stored_path=stored_path)
                 return {"status": "success", "modality": modality, "result": result}
             elif modality == 'image':
                 ingestor = ImageIngestor(self.metadata_store, self.qdrant_adapter, self.text_embedder)
@@ -99,6 +99,8 @@ class IngestionAgent:
                         text = group.to_string(index=False)
                         text = text[:max_chunk_chars]
                         meta = {"source": source, "type": "csv", "filename": os.path.basename(file_path), "asset": str(asset)}
+                        if stored_path:
+                            meta["stored_path"] = stored_path
                         chunks.append({"text": text, "metadata": meta})
                 else:
                     # Chunk by fixed number of rows to keep chunks reasonably sized
@@ -109,6 +111,8 @@ class IngestionAgent:
                         text = sub.to_string(index=False)
                         text = text[:max_chunk_chars]
                         meta = {"source": source, "type": "csv", "filename": os.path.basename(file_path), "row_range": f"{start}-{start+len(sub)-1}"}
+                        if stored_path:
+                            meta["stored_path"] = stored_path
                         chunks.append({"text": text, "metadata": meta})
 
                 # Create embeddings for chunks (uses batching inside helper)
@@ -123,6 +127,8 @@ class IngestionAgent:
                     # include a short text excerpt to help downstream analyzer and retrieval displays
                     meta['text_excerpt'] = item.get('text', '')[:1000]
                     meta['filename'] = os.path.basename(file_path)
+                    if stored_path:
+                        meta['stored_path'] = stored_path
                     metas.append(meta)
                     ids.append(item['id'])
 
@@ -138,6 +144,8 @@ class IngestionAgent:
                 embedding = self.text_embedder.embed([text_content])[0]
                 id_ = str(uuid.uuid4())
                 metadata = {"source": source, "type": "excel", "filename": os.path.basename(file_path), "id": id_}
+                if stored_path:
+                    metadata['stored_path'] = stored_path
                 self.qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
                 self.metadata_store.store_metadata(id_, metadata)
                 return {"status": "success", "modality": modality}
@@ -147,6 +155,8 @@ class IngestionAgent:
                 embedding = self.text_embedder.embed([text_content])[0]
                 id_ = str(uuid.uuid4())
                 metadata = {"source": source, "type": "audio", "filename": os.path.basename(file_path), "id": id_}
+                if stored_path:
+                    metadata['stored_path'] = stored_path
                 self.qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
                 self.metadata_store.store_metadata(id_, metadata)
                 return {"status": "success", "modality": modality, "transcription": text_content}
@@ -157,6 +167,8 @@ class IngestionAgent:
                 embedding = self.text_embedder.embed([insights])[0]
                 id_ = str(uuid.uuid4())
                 metadata = {"source": source, "type": "chart", "filename": os.path.basename(file_path), "id": id_}
+                if stored_path:
+                    metadata['stored_path'] = stored_path
                 self.qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
                 self.metadata_store.store_metadata(id_, metadata)
                 return {"status": "success", "modality": modality, "insights": insights}
@@ -173,6 +185,8 @@ class IngestionAgent:
                 embedding = self.text_embedder.embed([text_content])[0]
                 id_ = str(uuid.uuid4())
                 metadata = {"source": source, "type": "table", "filename": os.path.basename(file_path), "id": id_}
+                if stored_path:
+                    metadata['stored_path'] = stored_path
                 self.qdrant_adapter.upsert_vectors("text_docs", [embedding], [metadata], [id_])
                 self.metadata_store.store_metadata(id_, metadata)
                 return {"status": "success", "modality": modality, "tables": tables}

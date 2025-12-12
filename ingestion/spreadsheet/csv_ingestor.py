@@ -62,7 +62,7 @@ class CSVIngestor:
             chunks.append(text)
         return chunks
 
-    def process_csv(self, csv_path: str, source: str = "unknown") -> bool:
+    def process_csv(self, csv_path: str, source: str = "unknown", stored_path: str = None) -> bool:
         """
         Process a CSV file: load, extract insights, chunk, embed, store.
         
@@ -93,6 +93,8 @@ class CSVIngestor:
                     "insights": insights,
                     "text": chunk
                 }
+                if stored_path:
+                    metadata['stored_path'] = stored_path
                 self.metadata_store.store_metadata(doc_id, metadata)
                 embedding = self.text_embedder.embed([chunk])[0]
                 vectors.append((doc_id, embedding, metadata))

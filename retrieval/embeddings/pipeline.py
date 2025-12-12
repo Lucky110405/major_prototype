@@ -59,7 +59,7 @@ def run_embedding_pipeline(chunks: List[dict], meta_db_path: str = METADATA_DB_P
 
     # init stores
     dim = len(items[0]["embedding"])
-    meta = MetadataStore(meta_db_path)
+    meta = MetadataStore()
     vs = FaissVectorStore(dim, index_path)
 
     # persist into metadata store with embedding

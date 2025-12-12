@@ -57,3 +57,6 @@ logs/
 *.db
 node_modules/
 dist/
+
+data/
+build/

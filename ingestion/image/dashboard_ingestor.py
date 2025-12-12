@@ -71,7 +71,7 @@ class DashboardIngestor:
             logger.error(f"Error embedding image {image_path}: {e}")
             return []
 
-    def process_dashboard(self, image_path: str, source: str = "dashboard") -> bool:
+    def process_dashboard(self, image_path: str, source: str = "dashboard", stored_path: str = None) -> bool:
         """
         Process a dashboard image: OCR, chunk, embed, store.
         
@@ -96,6 +96,7 @@ class DashboardIngestor:
             metadata = {
                 "source": source,
                 "file_path": image_path,
+                "stored_path": stored_path,
                 "type": "dashboard",
                 "ocr_text": ocr_text,
                 "chunk_count": len(chunks)
@@ -109,6 +110,7 @@ class DashboardIngestor:
                 chunk_metadata = {
                     "source": source,
                     "file_path": image_path,
+                    "stored_path": stored_path,
                     "type": "dashboard_chunk",
                     "chunk_index": i,
                     "text": chunk
